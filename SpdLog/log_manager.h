@@ -2,7 +2,6 @@
 #include <filesystem>
 #include <string>
 #include <iostream>
-#include <optional>
 
 #define SPDLOG_LEVEL_NAMES \
 { \
@@ -86,10 +85,10 @@ class log_ptr
 {
     std::string sink_name_;
     std::string name_;
-    std::optional<std::shared_ptr<spdlog::logger>> logger_;
+    std::shared_ptr<spdlog::logger> logger_;
 
     explicit log_ptr(std::string sink_name, std::string name)
-        : sink_name_(std::move(sink_name)), name_(std::move(name)), logger_(std::nullopt)
+        : sink_name_(std::move(sink_name)), name_(std::move(name)), logger_(nullptr)
     {
         std::clog << "ctor " << sink_name_ << "." << name_ << std::endl;
     }
@@ -113,7 +112,7 @@ public:
     spdlog::logger* get()
     {
         initialize();
-        return logger_.value().get();
+        return logger_.get();
     }
 
     spdlog::logger* operator->()
@@ -124,12 +123,12 @@ public:
 
 inline void log_ptr::initialize()
 {
-    if (logger_.has_value())
+    if (logger_)
         return;
     {
         static std::mutex mutex;
         std::lock_guard lk{ mutex };
-        if (logger_.has_value())
+        if (logger_)
             return;
         logger_ = log_manager::instance().get_internal_logger(sink_name_, name_);
     }
