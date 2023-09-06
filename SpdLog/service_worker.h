@@ -8,8 +8,8 @@
 // static LoggerPtr _log(Logger::getLogger("agent_messaging"));
 // static LoggerPtr _log_msg(Logger::getLogger("messaging.agent_messaging"));
 
-static log_ptr _log = log_manager::get_logger("agent_messaging");
-static log_ptr _log_msg = log_manager::get_messaging_logger("agent_messaging");
+static log_wrap _log = log_manager::create_logger("agent_messaging");
+static log_wrap _log_msg = log_manager::create_messaging_logger("agent_messaging");
 
 class service_worker
 {
@@ -17,19 +17,19 @@ class service_worker
     std::atomic_bool done_{};
     std::thread worker_{}; // std::jthread is C++20
 
-    log_ptr member_log_;
+    const log_wrap member_log_; //can be const it's just a wrapper
 
 public:
 
     explicit service_worker(std::string name)
         : name_(std::move(name)),
-          member_log_(log_manager::get_logger(name_)) // move ctor. needed??
-                                                      // otherwise it fails on
-                                                      // error C2280: 'log_ptr::log_ptr(const log_ptr &)': attempting to reference a deleted function
-                                                      // but it does not seem to call mv ctor in actual runtime ??
+          member_log_(log_manager::create_logger(name_))
     {
         this->worker_ = std::thread{ &service_worker::run, this };
     }
+
+    service_worker(const service_worker&) = delete;
+    service_worker& operator=(const service_worker&) = delete;
 
     void stop()
     {
@@ -46,18 +46,24 @@ private:
 
     void run()
     {
-        //member_log_ = log_manager::get_logger("agent_messaging"); // -- error, we do not want this
-        member_log_->info("instance logger");
-        _log->info("Static logger");
+        member_log_.info("instance logger", name_);
+
+        _log.trace("{} static logger", name_);
+        _log.debug("{} static logger", name_);
+        _log.info("{} static logger", name_);
+        _log.warn("{} static logger", name_);
+        _log.error("{} static logger", name_);
+        _log.fatal("{} static logger", name_);
         using namespace std::chrono_literals;
         while (!this->done_.load())
         {
             // this produces:
 
-            // 2023-09-05 13:19:08,221 [732] DEBUG messaging.agent_messaging - Foo is logging...
+            // 2023-09-06 10:08:38,655 [3212] DEBUG agent_messaging - Bar is logging...
+            // 2023-09-06 10:08:38,657 [13516] DEBUG agent_messaging - Foo is logging...
 
-            // "sink_name." is superfluous but we don't care...
-            _log_msg->debug("{} is logging...", name_);
+            // in c:\ProgramData\SpdLog\messaging.log like log4cxx nice...
+            _log_msg.debug("{} is logging...", name_);
             std::this_thread::sleep_for(1ms);
         }
     }

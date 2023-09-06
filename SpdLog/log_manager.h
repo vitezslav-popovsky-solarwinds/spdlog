@@ -1,22 +1,16 @@
 #pragma once
 #include <filesystem>
-#include <string>
 #include <iostream>
+#include <string>
 
 #define SPDLOG_LEVEL_NAMES \
-{ \
-  std::string_view{"TRACE"}, \
-  std::string_view{"DEBUG"}, \
-  std::string_view{"INFO"}, \
-  std::string_view{"WARN"}, \
-  std::string_view{"ERROR"}, \
-  std::string_view{"FATAL"}, \
-  std::string_view{"OFF"} \
-};
-
-// SPDLOG_NO_EXCEPTIONS calls abort() not sure whether this is good idea...
-
-#define SPDLOG_NO_EXCEPTIONS
+    { spdlog::string_view_t("TRACE", 5) \
+    , spdlog::string_view_t("DEBUG", 5) \
+    , spdlog::string_view_t("INFO", 4)  \
+    , spdlog::string_view_t("WARN", 4)  \
+    , spdlog::string_view_t("ERROR", 5) \
+    , spdlog::string_view_t("FATAL", 5) \
+    , spdlog::string_view_t("OFF", 3) }
 
 #pragma warning(push)
 #pragma warning ( disable: 4307 ) // spdlog warning C4307: '*': integral constant overflow
@@ -25,52 +19,63 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #pragma warning(pop)
 
-class log_ptr;
+class log_wrap;
 
 class log_manager
 {
-    static const std::string default_sink_name;
-    static const std::string messaging_sink_name;
+    static const std::string default_logger_name;
+    static const std::string messaging_logger_name;
 
     static const std::string log_pattern;
+    std::unordered_map<std::string, std::shared_ptr<spdlog::logger>> loggers_;
 
     log_manager();
-    std::unordered_map<std::string, spdlog::sink_ptr> sinks_;
 
-    std::shared_ptr<spdlog::logger> get_internal_logger(const std::string& sink_name, const std::string& logger_name);
+    std::shared_ptr<spdlog::logger> get_internal_logger(const std::string &logger_name);
 
 public:
-    friend log_ptr;
+    friend log_wrap;
 
-    static log_ptr get_logger(std::string logger_name);
-    static log_ptr get_messaging_logger(std::string logger_name);
+    static log_wrap create_logger(std::string category);
+    static log_wrap create_messaging_logger(std::string category);
 
-    void initialize(const std::filesystem::path& base_path)
+    bool initialize(const std::filesystem::path& base_path)
     {
         static constexpr std::size_t max_size = 1024;
         static constexpr std::size_t max_files = 3;
-        static spdlog::level::level_enum global_level = spdlog::level::debug;
-
-        spdlog::drop_all(); // remove implicit default logger
-        spdlog::set_level(global_level);
+        static spdlog::level::level_enum global_level = spdlog::level::trace;
 
         spdlog::file_event_handlers handlers;
         handlers.after_open = [](const spdlog::filename_t&, std::FILE *file_stream) { fputs("*** SpdLog Service v2023.4.0.1070 ***\n", file_stream); };
+        try
+        {
+            spdlog::drop_all(); // remove implicit default logger
 
-        const auto default_log_path = base_path / "default.log";
-        auto default_log_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(default_log_path.generic_string(), max_size, max_files, false, handlers);
-        const auto default_logger = std::make_shared<spdlog::logger>("SpdLog", default_log_sink);
-        
-        spdlog::set_default_logger(default_logger);
-        spdlog::set_pattern(log_pattern); // must be set after set_default_logger
+            const auto default_log_path = base_path / "default.log";
+            auto default_log_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(default_log_path.generic_string(), max_size, max_files, false, handlers);
+            const auto default_logger = std::make_shared<spdlog::logger>(default_logger_name, default_log_sink);
 
-        const auto messaging_log_path = base_path / "messaging.log";
-        const auto messaging_log_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(messaging_log_path.generic_string(), max_size, max_files, false, handlers);
+            spdlog::set_default_logger(default_logger);
+            spdlog::set_pattern(log_pattern); // must be set after set_default_logger
+            spdlog::set_level(global_level);
 
-        sinks_[default_sink_name] = default_log_sink;
-        sinks_[messaging_sink_name] = messaging_log_sink;
+            const auto messaging_log_path = base_path / "messaging.log";
+            const auto messaging_log_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(messaging_log_path.generic_string(), max_size, max_files, false, handlers);
+            const auto messaging_logger = std::make_shared<spdlog::logger>(messaging_logger_name, messaging_log_sink);
+            spdlog::initialize_logger(messaging_logger);
 
-        spdlog::flush_every(std::chrono::seconds(1));
+            loggers_[default_logger_name] = default_logger;
+            loggers_[messaging_logger_name] = messaging_logger;
+
+            spdlog::flush_every(std::chrono::seconds(1));
+            return true;
+        }
+        catch (const spdlog::spdlog_ex& e)
+        {
+            std::cerr << "Unable to initialize logging: " << e.what() << std::endl;
+        }
+
+        return false;
     }
 
     static void shutdown()
@@ -81,91 +86,100 @@ public:
     static log_manager &instance();
 };
 
-class log_ptr
+class log_wrap
 {
-    std::string sink_name_;
-    std::string name_;
-    std::shared_ptr<spdlog::logger> logger_;
+    std::string logger_name_;
+    std::string category_;
 
-    explicit log_ptr(std::string sink_name, std::string name)
-        : sink_name_(std::move(sink_name)), name_(std::move(name)), logger_(nullptr)
+    explicit log_wrap(std::string logger_name, std::string category)
+        : logger_name_(std::move(logger_name)), category_(std::move(category))
     {
-        std::clog << "ctor " << sink_name_ << "." << name_ << std::endl;
+        std::clog << "ctor " << logger_name_ << "." << category_ << std::endl;
     }
 
 public:
     friend log_manager;
 
-    log_ptr(const log_ptr&) = delete;
-    log_ptr& operator=(const log_ptr&) = delete;
+    log_wrap(const log_wrap&) = delete;
+    log_wrap& operator=(const log_wrap&) = delete;
 
-    log_ptr(log_ptr&& rhs) noexcept // cannot compile without this, but it is not called at runtime!?
+    log_wrap(log_wrap&& rhs) noexcept
     {
-        sink_name_ = std::move(rhs.sink_name_);
-        name_ = std::move(rhs.name_);
-        logger_ = std::move(rhs.logger_);
-        std::clog << "mv ctor " << sink_name_ << "." << name_ << std::endl;
+        logger_name_ = std::move(rhs.logger_name_);
+        category_ = std::move(rhs.category_);
+        std::clog << "mv ctor " << logger_name_ << "." << category_ << std::endl;
     }
 
-    void initialize();
 
-    spdlog::logger* get()
+    template<typename... Args>
+    void trace(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        initialize();
-        return logger_.get();
+        log(spdlog::level::trace, fmt, std::forward<Args>(args)...);
     }
 
-    spdlog::logger* operator->()
+    template<typename... Args>
+    void debug(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        return get();
+        log(spdlog::level::debug, fmt, std::forward<Args>(args)...);
     }
+
+    template<typename... Args>
+    void info(spdlog::format_string_t<Args...> fmt, Args &&...args) const
+    {
+        log(spdlog::level::info, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void warn(spdlog::format_string_t<Args...> fmt, Args &&...args) const
+    {
+        log(spdlog::level::warn, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void error(spdlog::format_string_t<Args...> fmt, Args &&...args) const
+    {
+        log(spdlog::level::err, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void fatal(spdlog::format_string_t<Args...> fmt, Args &&...args) const
+    {
+        log(spdlog::level::critical, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void log(spdlog::level::level_enum lvl, spdlog::format_string_t<Args...> fmt, Args &&...args) const
+    {
+        if (const auto logger = log_manager::instance().get_internal_logger(logger_name_))
+        {
+            logger->log(spdlog::source_loc{ "", 1, category_.c_str() }, lvl, fmt, std::forward<Args>(args)...);
+        }
+    }
+
 };
 
-inline void log_ptr::initialize()
-{
-    if (logger_)
-        return;
-    {
-        static std::mutex mutex;
-        std::lock_guard lk{ mutex };
-        if (logger_)
-            return;
-        logger_ = log_manager::instance().get_internal_logger(sink_name_, name_);
-    }
-}
+const std::string log_manager::default_logger_name("default");
+const std::string log_manager::messaging_logger_name("messaging");
 
-const std::string log_manager::default_sink_name("default");
-const std::string log_manager::messaging_sink_name("messaging");
-const std::string log_manager::log_pattern("%Y-%m-%d %H:%M:%S,%e [%t] %l %n - %v");
+// hack %! use source_loc.funcname as category name
+const std::string log_manager::log_pattern("%Y-%m-%d %H:%M:%S,%e [%t] %l %! - %v");
 
 inline log_manager::log_manager() = default;
 
-inline std::shared_ptr<spdlog::logger> log_manager::get_internal_logger(const std::string& sink_name, const std::string& logger_name)
+inline log_wrap log_manager::create_logger(std::string category)
 {
-    // logger name must be unique so we need to combine it with sink_name for nondefault
-    const auto spd_logger_name = sink_name == default_sink_name ? logger_name : sink_name + "." + logger_name;
-    auto logger = spdlog::get(spd_logger_name);
-    if (logger)
-    {
-        return logger;
-    }
-
-    logger = std::make_shared<spdlog::logger>(spd_logger_name, sinks_[sink_name]);
-    logger->set_level(spdlog::level::debug);
-    spdlog::initialize_logger(logger);
-    return logger;
+    return log_wrap(default_logger_name, std::move(category));
 }
 
-inline log_ptr log_manager::get_logger(std::string logger_name)
+inline log_wrap log_manager::create_messaging_logger(std::string category)
 {
-    return log_ptr(default_sink_name, std::move(logger_name));
+    return log_wrap(messaging_logger_name, std::move(category));
 }
 
-inline log_ptr log_manager::get_messaging_logger(std::string logger_name)
+inline std::shared_ptr<spdlog::logger> log_manager::get_internal_logger(const std::string& logger_name)
 {
-    return log_ptr(messaging_sink_name, std::move(logger_name));
+    return loggers_[logger_name];
 }
-
 
 inline log_manager &log_manager::instance()
 {
