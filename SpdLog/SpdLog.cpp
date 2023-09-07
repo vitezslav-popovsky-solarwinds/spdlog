@@ -1,10 +1,9 @@
 #include <conio.h>
 #include <atlstr.h>
+#include <ShlObj.h>
 
 #include "log_manager.h"
 #include "service_worker.h"
-
-#include <ShlObj.h>
 
 std::string get_program_data_folder()
 {
@@ -31,17 +30,17 @@ int main()
 
     const auto base_path = std::filesystem::path{ program_data } / "SpdLog";
 
-    log_manager::instance().initialize(base_path);
+    if(!log_manager::instance().initialize(base_path))
+    {
+        return 1;
+    }
 
     std::clog << "log_manager initialized" << std::endl;
-
-    spdlog::info("Welcome to spdlog!");
-
 
     service_worker worker_foo("Foo");
     service_worker worker_bar("Bar");
 
-    std::cout << "Press any key to continue. . .\n";
+    std::cout << "Press any key to continue. . ." << std::endl;
     _getch();
 
     worker_foo.stop();
