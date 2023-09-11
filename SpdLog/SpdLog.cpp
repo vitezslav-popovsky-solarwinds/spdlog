@@ -5,32 +5,23 @@
 #include "log_manager.h"
 #include "service_worker.h"
 
-std::string get_program_data_folder()
+std::string expand_environment_strings(const std::string& src)
 {
-    PWSTR ppszPath = nullptr;
-    if (SHGetKnownFolderPath(FOLDERID_ProgramData, KF_FLAG_DEFAULT, nullptr, &ppszPath) == S_OK)
-    {
-        std::string program_data(CW2A(ppszPath, CP_UTF8));
-        CoTaskMemFree(ppszPath);
-        return program_data;
-    }
-
-    return {};
+    _TCHAR dest_buffer[MAX_PATH];
+    ExpandEnvironmentStrings(CA2W(src.c_str(), CP_UTF8).m_psz, dest_buffer, ARRAYSIZE(dest_buffer));
+    return {CW2A(dest_buffer, CP_UTF8).m_szBuffer};
 }
 
 int main()
 {
     std::clog << "main function" << std::endl;
-    const auto program_data = get_program_data_folder();
-    if (program_data.empty())
-    {
-        std::cerr << "Fatal error: Unable to resolve ProgramData folder!" << std::endl;
-        return 1;
-    }
 
-    const auto base_path = std::filesystem::path{ program_data } / "SpdLog";
+    std::string base_log_path(R"(%ALLUSERSPROFILE%\SpdLog)");
+    base_log_path = expand_environment_strings(base_log_path);
 
-    if(!log_manager::instance().initialize(base_path))
+    std::clog << "expanded log directory path: " << base_log_path << std::endl;
+
+    if(!log_manager::instance().initialize(std::filesystem::path{ base_log_path }))
     {
         return 1;
     }
