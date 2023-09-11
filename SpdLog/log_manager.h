@@ -12,11 +12,14 @@
     , spdlog::string_view_t("FATAL", 5) \
     , spdlog::string_view_t("OFF", 3) }
 
+#define SPDLOG_WCHAR_TO_UTF8_SUPPORT
+
 #pragma warning(push)
 #pragma warning ( disable: 4307 ) // spdlog warning C4307: '*': integral constant overflow
 #include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/fmt/ostr.h> // provides std::ostream support including formatting of user-defined types that have overloaded operator<<:
 #pragma warning(pop)
 
 #define LOG_DEBUG(logger, ...) { \
@@ -96,6 +99,8 @@ public:
 
 class log_wrap
 {
+    static constexpr const char* empty_str = "";
+
     std::string name_;
     std::shared_ptr<spdlog::logger> log_;
 
@@ -128,46 +133,87 @@ public:
     template<typename... Args>
     void trace(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        log(spdlog::level::trace, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::level::trace, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void trace(spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::level::trace, fmt, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void debug(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        log(spdlog::level::debug, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::level::debug, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void debug(spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::level::debug, fmt, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void info(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        log(spdlog::level::info, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::level::info, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void info(spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::level::info, fmt, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void warn(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        log(spdlog::level::warn, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::level::warn, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void warn(spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::level::warn, fmt, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void error(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        log(spdlog::level::err, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::level::err, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void error(spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::level::err, fmt, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void fatal(spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        log(spdlog::level::critical, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::level::critical, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void fatal(spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::level::critical, fmt, std::forward<Args>(args)...);
     }
 
     template<typename... Args>
     void log(spdlog::level::level_enum lvl, spdlog::format_string_t<Args...> fmt, Args &&...args) const
     {
-        
         std::clog << std::string(">  log ").append(spdlog::level::to_string_view(lvl).data()).append("\n");
 
-        log_->log(spdlog::source_loc{ "", 1, name_.c_str() }, lvl, fmt, std::forward<Args>(args)...);
+        log_->log(spdlog::source_loc{ empty_str, 1, name_.c_str() }, lvl, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void log(spdlog::level::level_enum lvl, spdlog::wformat_string_t<Args...> fmt, Args &&...args)
+    {
+        log_->log(spdlog::source_loc{ empty_str, 1, name_.c_str() }, lvl, fmt, std::forward<Args>(args)...);
     }
 
     bool is_trace_enabled() const

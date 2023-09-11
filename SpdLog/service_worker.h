@@ -25,6 +25,7 @@ public:
         : name_(std::move(name)),
           member_log_(log_manager::create_logger(name_))
     {
+        _log.debug(R"(creating new service_worker({{"{}"}}))", name);
         this->worker_ = std::thread{ &service_worker::run, this };
     }
 
@@ -46,8 +47,14 @@ private:
 
     void run()
     {
-        member_log_.info("instance logger", name_);
         LOG_TRACE(member_log_, "instance trace")
+
+        // wformat_string_t
+        const std::wstring wstr(L"8Go de RAM est la quantité que nous recommandons pour une utilisation occasionnelle de votre ordinateur.");
+        _log.info(L"🛈 {} 🛈", wstr);
+        _log.info(L"Mémoire {}Go", 8);
+        _log.warn(L"Speicherkapazität {}kB", 512);
+        _log.debug(L"Aktivitätsträger {}", std::this_thread::get_id());
 
         _log.trace("{} static logger", name_);
         _log.debug("{} static logger", name_);
